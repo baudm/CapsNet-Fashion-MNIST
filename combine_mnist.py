@@ -3,6 +3,7 @@
 from capsulenet import load_mnist
 import numpy as np
 
+
 def draw(canvas, image):
     x_off = np.random.randint(0, 13)
     y_off = np.random.randint(0, 13)
@@ -29,37 +30,35 @@ def sample_and_combine(x_pool, y_pool):
     y1[np.argmax(y2)] = 1
     return combined, y1
 
+import uuid
+
+
+def combine(x_pool, y_pool, num_samples):
+    c_x_train = []
+    c_y_train = []
+    while num_samples:
+        x, y = sample_and_combine(x_pool, y_pool)
+        c_x_train.append(x)
+        c_y_train.append(y)
+        num_samples -= 1
+        if len(c_x_train) >= 1000000:
+            c_x_train = np.stack(c_x_train)
+            c_y_train = np.stack(c_y_train)
+            fname = 'cfmnist_' + str(uuid.uuid4())
+            print(fname)
+            with open(fname, 'wb') as f:
+                np.savez(f, x=c_x_train, y=c_y_train)
+            c_x_train = []
+            c_y_train = []
+
 
 def main():
     num_samples = 60000000
     num_test = 10000000
     (x_train, y_train), (x_test, y_test) = load_mnist()
-
-    c_x_train = []
-    c_y_train = []
-    while num_samples:
-        x, y = sample_and_combine(x_train, y_train)
-        c_x_train.append(x)
-        c_y_train.append(y)
-        num_samples -= 1
-
-    c_x_train = np.stack(c_x_train)
-    c_y_train = np.stack(c_y_train)
-
-    c_x_test = []
-    c_y_test = []
-    while num_test:
-        x, y = sample_and_combine(x_test, y_test)
-        c_x_test.append(x)
-        c_y_test.append(y)
-        num_test -= 1
-
-    c_x_test = np.stack(c_x_test)
-    c_y_test = np.stack(c_y_test)
-
-    with open('data.npz') as f:
-        np.savez(f, x_train=c_x_train, y_train=c_y_train, x_test=c_x_test, y_test=c_y_test)
-
+    combine(x_train, y_train, num_samples)
+    combine(x_test, y_test, num_test)
+        
 
 if __name__ == '__main__':
     main()
