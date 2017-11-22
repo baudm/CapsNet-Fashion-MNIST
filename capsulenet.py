@@ -48,8 +48,10 @@ def CapsNet(input_shape, n_class, num_routing):
     out_caps = Length(name='capsnet')(digitcaps)
 
     # Decoder network.
-    y = layers.Input(shape=(n_class,))
-    masked_by_y = Mask()([digitcaps, y])  # The true label is used to mask the output of capsule layer. For training
+    y1 = layers.Input(shape=(n_class,))
+    y2 = layers.Input(shape=(n_class,))
+    masked_by_y1 = Mask()([digitcaps, y1])  # The true label is used to mask the output of capsule layer. For training
+    masked_by_y2 = Mask()([digitcaps, y2])  # The true label is used to mask the output of capsule layer. For training
     masked = Mask()(digitcaps)  # Mask using the capsule with maximal length. For prediction
 
     # Shared Decoder model in training and prediction
@@ -60,7 +62,7 @@ def CapsNet(input_shape, n_class, num_routing):
     decoder.add(layers.Reshape(target_shape=input_shape, name='out_recon'))
 
     # Models for training and evaluation (prediction)
-    train_model = models.Model([x, y], [out_caps, decoder(masked_by_y)])
+    train_model = models.Model([x, y1, y2], [out_caps, decoder(masked_by_y1), decoder(masked_by_y2)])
     eval_model = models.Model(x, [out_caps, decoder(masked)])
     return train_model, eval_model
 
@@ -158,7 +160,7 @@ def test(model, data):
 
 def load_mnist():
     # the data, shuffled and split between train and test sets
-    from keras.datasets import mnist, fashion_mnist
+    from keras.datasets import fashion_mnist
     (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
 
     x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
