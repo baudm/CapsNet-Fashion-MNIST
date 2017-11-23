@@ -54,12 +54,13 @@ def CapsNet(input_shape, n_class, num_routing):
     masked_by_y2 = Mask()([digitcaps, y2])  # The true label is used to mask the output of capsule layer. For training
     masked = Mask()(digitcaps)  # Mask using the capsule with maximal length. For prediction
 
+    mnist_shape = (28, 28, 1)
     # Shared Decoder model in training and prediction
     decoder = models.Sequential(name='decoder')
     decoder.add(layers.Dense(512, activation='relu', input_dim=16*n_class))
     decoder.add(layers.Dense(1024, activation='relu'))
-    decoder.add(layers.Dense(np.prod(input_shape), activation='sigmoid'))
-    decoder.add(layers.Reshape(target_shape=input_shape, name='out_recon'))
+    decoder.add(layers.Dense(np.prod(mnist_shape), activation='sigmoid'))
+    decoder.add(layers.Reshape(target_shape=mnist_shape, name='out_recon'))
 
     # Models for training and evaluation (prediction)
     train_model = models.Model([x, y1, y2], [out_caps, decoder(masked_by_y1), decoder(masked_by_y2)])
@@ -78,6 +79,57 @@ def margin_loss(y_true, y_pred):
         0.5 * (1 - y_true) * K.square(K.maximum(0., y_pred - 0.1))
 
     return K.mean(K.sum(L, 1))
+
+
+import glob
+from keras.datasets import fashion_mnist
+
+
+def loader(path, batch_size=64, normalize=True):
+    """Generator to be used with model.fit_generator()"""
+    (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
+    while True:
+        files = glob.glob(os.path.join(path, '*.npz'))
+        np.random.shuffle(files)
+        for npz in files:
+            # Load pack into memory
+            archive = np.load(npz)
+            x = archive['x'].reshape(-1, 42, 42, 1)
+            idx = archive['idx']
+            del archive
+            x1 = x_train[idx[:, 0]].reshape(-1, 28, 28, 1)
+            x2 = x_train[idx[:, 1]].reshape(-1, 28, 28, 1)
+            y1 = y_train[idx[:, 0]]
+            y2 = y_train[idx[:, 1]]
+            y2_idx = y2.copy()
+            y1 = to_categorical(y1, 10)
+            y2 = to_categorical(y2, 10)
+            y = y1.copy()
+            # Combine y1 and y2
+            y[np.arange(len(y)), y2_idx] = 1
+            # _shuffle_in_unison(images, offsets)
+            # Split into mini batches
+            num_batches = int(len(x) / batch_size)
+            print(x.shape, x1.shape, x2.shape)
+            x = np.array_split(x, num_batches)
+            x1 = np.array_split(x1, num_batches)
+            x2 = np.array_split(x2, num_batches)
+            print(y.shape, y1.shape, y2.shape)
+            y = np.array_split(y, num_batches)
+            y1 = np.array_split(y1, num_batches)
+            y2 = np.array_split(y2, num_batches)
+            while x:
+                b_x = x.pop()
+                b_x1 = x1.pop()
+                b_x2 = x2.pop()
+                b_y = y.pop()
+                b_y1 = y1.pop()
+                b_y2 = y2.pop()
+                if normalize:
+                    b_x = (b_x - 127.5) / 127.5
+                    b_x1 = (b_x2 - 127.5) / 127.5
+                    b_x2 = (b_x1 - 127.5) / 127.5
+                yield [b_x, b_y1, b_y2], [b_y, b_x1, b_x2]
 
 
 def train(model, data, args):
@@ -101,8 +153,8 @@ def train(model, data, args):
 
     # compile the model
     model.compile(optimizer=optimizers.Adam(lr=args.lr),
-                  loss=[margin_loss, 'mse'],
-                  loss_weights=[1., args.lam_recon],
+                  loss=[margin_loss, 'mse', 'mse'],
+                  loss_weights=[1., args.lam_recon, args.lam_recon],
                   metrics={'capsnet': 'accuracy'})
 
     """
@@ -122,10 +174,9 @@ def train(model, data, args):
             yield ([x_batch, y_batch], [y_batch, x_batch])
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
-    model.fit_generator(generator=train_generator(x_train, y_train, args.batch_size, args.shift_fraction),
-                        steps_per_epoch=int(y_train.shape[0] / args.batch_size),
+    model.fit_generator(generator=loader('data', 1),
+                        steps_per_epoch=10,
                         epochs=args.epochs,
-                        validation_data=[[x_test, y_test], [y_test, x_test]],
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
 
@@ -163,10 +214,10 @@ def load_mnist():
     from keras.datasets import fashion_mnist
     (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
 
-    x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
-    x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
-    y_train = to_categorical(y_train.astype('float32'))
-    y_test = to_categorical(y_test.astype('float32'))
+    # x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
+    # x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
+    # y_train = to_categorical(y_train.astype('float32'))
+    # y_test = to_categorical(y_test.astype('float32'))
     return (x_train, y_train), (x_test, y_test)
 
 
@@ -199,8 +250,8 @@ if __name__ == "__main__":
     (x_train, y_train), (x_test, y_test) = load_mnist()
 
     # define model
-    model, eval_model = CapsNet(input_shape=x_train.shape[1:],
-                                n_class=len(np.unique(np.argmax(y_train, 1))),
+    model, eval_model = CapsNet(input_shape=(42,42,1),
+                                n_class=10,
                                 num_routing=args.num_routing)
     model.summary()
     plot_model(model, to_file=args.save_dir+'/model.png', show_shapes=True)
