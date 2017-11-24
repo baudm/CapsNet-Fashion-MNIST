@@ -19,7 +19,7 @@ Author: Xifeng Guo, E-mail: `guoxifeng1990@163.com`, Github: `https://github.com
 from keras import layers, models, optimizers
 from keras import backend as K
 from keras.utils import to_categorical
-from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask
+from capsulelayers import CapsuleLayer, PrimaryCap, Length, Mask, k_categorical_accuracy
 
 K.set_image_data_format('channels_last')
 
@@ -110,11 +110,11 @@ def loader(path, batch_size=64, normalize=True):
             # _shuffle_in_unison(images, offsets)
             # Split into mini batches
             num_batches = int(len(x) / batch_size)
-            print(x.shape, x1.shape, x2.shape)
+            # print(x.shape, x1.shape, x2.shape)
             x = np.array_split(x, num_batches)
             x1 = np.array_split(x1, num_batches)
             x2 = np.array_split(x2, num_batches)
-            print(y.shape, y1.shape, y2.shape)
+            # print(y.shape, y1.shape, y2.shape)
             y = np.array_split(y, num_batches)
             y1 = np.array_split(y1, num_batches)
             y2 = np.array_split(y2, num_batches)
@@ -155,7 +155,7 @@ def train(model, data, args):
     model.compile(optimizer=optimizers.Adam(lr=args.lr),
                   loss=[margin_loss, 'mse', 'mse'],
                   loss_weights=[1., args.lam_recon, args.lam_recon],
-                  metrics={'capsnet': 'accuracy'})
+                  metrics={'capsnet': k_categorical_accuracy})
 
     """
     # Training without data augmentation:
