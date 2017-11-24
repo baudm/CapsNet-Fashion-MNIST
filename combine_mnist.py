@@ -56,6 +56,8 @@ def combine(outdir, x_pool, y_pool, num_samples, bundle_size):
         x_all.append(x)
         idx_all.append(idx)
         num_samples -= 1
+        if num_samples % 10000 == 0:
+            print(num_samples)
         if len(x_all) >= bundle_size:
             x_all = np.stack(x_all)
             idx_all = np.stack(idx_all)
@@ -71,10 +73,10 @@ import sys
 
 def main():
     outdir = sys.argv[1]
-    num_samples = 60000000
+    num_samples = 600000
     num_test = 10000000
     (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
-    combine(outdir, x_train, y_train, 10, 10)
+    combine(outdir, x_train, y_train, num_samples, 100000)
     #combine(x_test, y_test, num_test)
         
 
