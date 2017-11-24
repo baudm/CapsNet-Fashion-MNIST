@@ -104,8 +104,8 @@ def loader(path, batch_size=64, normalize=True):
             y2_idx = y2.copy()
             y1 = to_categorical(y1, 10)
             y2 = to_categorical(y2, 10)
-            y = y1.copy()
             # Combine y1 and y2
+            y = y1.copy()
             y[np.arange(len(y)), y2_idx] = 1
             # _shuffle_in_unison(images, offsets)
             # Split into mini batches
@@ -126,9 +126,9 @@ def loader(path, batch_size=64, normalize=True):
                 b_y1 = y1.pop()
                 b_y2 = y2.pop()
                 if normalize:
-                    b_x = (b_x - 127.5) / 127.5
-                    b_x1 = (b_x2 - 127.5) / 127.5
-                    b_x2 = (b_x1 - 127.5) / 127.5
+                    b_x = b_x / 255.
+                    b_x1 = b_x1 / 255.
+                    b_x2 = b_x2 / 255.
                 yield [b_x, b_y1, b_y2], [b_y, b_x1, b_x2]
 
 
@@ -147,7 +147,7 @@ def train(model, data, args):
     log = callbacks.CSVLogger(args.save_dir + '/log.csv')
     tb = callbacks.TensorBoard(log_dir=args.save_dir + '/tensorboard-logs',
                                batch_size=args.batch_size, histogram_freq=args.debug)
-    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='val_capsnet_acc',
+    checkpoint = callbacks.ModelCheckpoint(args.save_dir + '/weights-{epoch:02d}.h5', monitor='capsnet_acc',
                                            save_best_only=True, save_weights_only=True, verbose=1)
     lr_decay = callbacks.LearningRateScheduler(schedule=lambda epoch: args.lr * (0.95 ** epoch))
 
@@ -174,8 +174,9 @@ def train(model, data, args):
             yield ([x_batch, y_batch], [y_batch, x_batch])
 
     # Training with data augmentation. If shift_fraction=0., also no augmentation.
-    model.fit_generator(generator=loader('data', 1),
-                        steps_per_epoch=10,
+    num_samples = 100000
+    model.fit_generator(generator=loader('dataset', args.batch_size),
+                        steps_per_epoch=num_samples//args.batch_size,
                         epochs=args.epochs,
                         callbacks=[log, tb, checkpoint, lr_decay])
     # End: Training with data augmentation -----------------------------------------------------------------------#
