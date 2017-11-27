@@ -136,6 +136,71 @@ def train(model, data, args):
 
     return model
 
+import tensorflow as tf
+
+def k_categorical_accuracy(y_true, y_pred, k=2):
+    # Get top k classes
+    y_true = tf.nn.top_k(y_true, k, sorted=False).indices
+    y_pred = tf.nn.top_k(y_pred, k, sorted=False).indices
+    # Sort
+    y_true = tf.nn.top_k(y_true, k).values
+    y_pred = tf.nn.top_k(y_pred, k).values
+    return K.mean(K.cast(K.equal(y_true, y_pred), K.floatx()), -1)
+
+
+from keras.datasets import fashion_mnist
+import glob
+
+def loader(path, batch_size=64, normalize=True):
+    """Generator to be used with model.fit_generator()"""
+    (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
+    while True:
+        files = glob.glob(os.path.join(path, '*.npz'))
+        np.random.shuffle(files)
+        for npz in files:
+            # Load pack into memory
+            archive = np.load(npz)
+            x = archive['x'].reshape(-1, 42, 42, 1)
+            # Truncate to 40x40
+            x = x[:, 1:-1, 1:-1, :]
+            idx = archive['idx']
+            del archive
+            x1 = x_train[idx[:, 0]].reshape(-1, 28, 28, 1)
+            x2 = x_train[idx[:, 1]].reshape(-1, 28, 28, 1)
+            x1 = np.pad(x1, ((0, 0), (6, 6), (6, 6), (0, 0)), 'constant')
+            x2 = np.pad(x2, ((0, 0), (6, 6), (6, 6), (0, 0)), 'constant')
+            y1 = y_train[idx[:, 0]]
+            y2 = y_train[idx[:, 1]]
+            y2_idx = y2.copy()
+            y1 = to_categorical(y1, 10)
+            y2 = to_categorical(y2, 10)
+            # Combine y1 and y2
+            y = y1.copy()
+            y[np.arange(len(y)), y2_idx] = 1
+            # _shuffle_in_unison(images, offsets)
+            # Split into mini batches
+            num_batches = int(len(x) / batch_size)
+            # print(x.shape, x1.shape, x2.shape)
+            x = np.array_split(x, num_batches)
+            x1 = np.array_split(x1, num_batches)
+            x2 = np.array_split(x2, num_batches)
+            # print(y.shape, y1.shape, y2.shape)
+            y = np.array_split(y, num_batches)
+            y1 = np.array_split(y1, num_batches)
+            y2 = np.array_split(y2, num_batches)
+            while x:
+                b_x = x.pop()
+                b_x1 = x1.pop()
+                b_x2 = x2.pop()
+                b_y = y.pop()
+                b_y1 = y1.pop()
+                b_y2 = y2.pop()
+                if normalize:
+                    b_x = b_x / 255.
+                    b_x1 = b_x1 / 255.
+                    b_x2 = b_x2 / 255.
+                yield [b_x], [b_y, b_x1, b_x2]
+
 
 def test(model, data):
     x_test, y_test = data
@@ -162,18 +227,20 @@ import matplotlib.pyplot as plt
 
 def test_multi(model, data):
     x_test, y_test = data
-    x1, x2, x, y = sample_and_combine(x_test, y_test)
-    y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
-    print(y_pred, y, x_recon1.shape)
-    x_recon1 = x_recon1 * 255
-    x_recon2 = x_recon2 * 255
-    fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
-    ax[0][0].imshow(x1.reshape(28, 28)*255., cmap='gray')
-    ax[0][1].imshow(x2.reshape(28, 28) * 255., cmap='gray')
-    ax[0][2].imshow(x.reshape(40, 40) * 255., cmap='gray')
-    ax[1][0].imshow(x_recon1[0].reshape(40, 40), cmap='gray')
-    ax[1][1].imshow(x_recon2[0].reshape(40, 40), cmap='gray')
-    plt.show()
+    # x1, x2, x, y = sample_and_combine(x_test, y_test)
+    # y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
+    # print(y_pred, y, x_recon1.shape)
+    # x_recon1 = x_recon1 * 255
+    # x_recon2 = x_recon2 * 255
+    # fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
+    # ax[0][0].imshow(x1.reshape(28, 28)*255., cmap='gray')
+    # ax[0][1].imshow(x2.reshape(28, 28) * 255., cmap='gray')
+    # ax[0][2].imshow(x.reshape(40, 40) * 255., cmap='gray')
+    # ax[1][0].imshow(x_recon1[0].reshape(40, 40), cmap='gray')
+    # ax[1][1].imshow(x_recon2[0].reshape(40, 40), cmap='gray')
+    # plt.show()
+    e = model.evaluate_generator(loader('dataset', 10), steps=500)
+    print(e)
 
 
 def load_mnist():
@@ -231,6 +298,10 @@ if __name__ == "__main__":
     if args.is_training:
         train(model=model, data=((x_train, y_train), (x_test, y_test)), args=args)
     else:  # as long as weights are given, will run testing
+        eval_model.compile(optimizer=optimizers.Adam(lr=args.lr),
+                      loss=[margin_loss, 'mse', 'mse'],
+                      loss_weights=[1., args.lam_recon, args.lam_recon],
+                      metrics={'capsnet': k_categorical_accuracy})
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')
         test_multi(model=eval_model, data=(x_test, y_test))
