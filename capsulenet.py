@@ -50,7 +50,8 @@ def CapsNet(input_shape, n_class, num_routing):
     # Decoder network.
     y = layers.Input(shape=(n_class,))
     masked_by_y = Mask()([digitcaps, y])  # The true label is used to mask the output of capsule layer. For training
-    masked = Mask()(digitcaps)  # Mask using the capsule with maximal length. For prediction
+    masked1 = Mask(1)(digitcaps)  # Mask using the capsule with maximal length. For prediction
+    masked2 = Mask(2)(digitcaps)  # Mask using the capsule with maximal length. For prediction
 
     # Shared Decoder model in training and prediction
     decoder = models.Sequential(name='decoder')
@@ -61,7 +62,7 @@ def CapsNet(input_shape, n_class, num_routing):
 
     # Models for training and evaluation (prediction)
     train_model = models.Model([x, y], [out_caps, decoder(masked_by_y)])
-    eval_model = models.Model(x, [out_caps, decoder(masked)])
+    eval_model = models.Model(x, [out_caps, decoder(masked1), decoder(masked2)])
     return train_model, eval_model
 
 
@@ -156,13 +157,34 @@ def test(model, data):
     plt.show()
 
 
+from combine_mnist import sample_and_combine
+import matplotlib.pyplot as plt
+
+def test_multi(model, data):
+    x_test, y_test = data
+    x1, x2, x, y = sample_and_combine(x_test, y_test)
+    y_pred, x_recon1, x_recon2 = model.predict_on_batch(x[np.newaxis])
+    print(y_pred, y, x_recon1.shape)
+    x_recon1 = x_recon1 * 255
+    x_recon2 = x_recon2 * 255
+    fig, ax = plt.subplots(nrows=2, ncols=3, dpi=100, figsize=(40, 10))
+    ax[0][0].imshow(x1.reshape(28, 28)*255., cmap='gray')
+    ax[0][1].imshow(x2.reshape(28, 28) * 255., cmap='gray')
+    ax[0][2].imshow(x.reshape(40, 40) * 255., cmap='gray')
+    ax[1][0].imshow(x_recon1[0].reshape(40, 40), cmap='gray')
+    ax[1][1].imshow(x_recon2[0].reshape(40, 40), cmap='gray')
+    plt.show()
+
+
 def load_mnist():
     # the data, shuffled and split between train and test sets
     from keras.datasets import mnist, fashion_mnist
     (x_train, y_train), (x_test, y_test) = fashion_mnist.load_data()
 
     x_train = x_train.reshape(-1, 28, 28, 1).astype('float32') / 255.
+    x_train = np.pad(x_train, ((0, 0), (6, 6), (6, 6), (0, 0)), 'constant')
     x_test = x_test.reshape(-1, 28, 28, 1).astype('float32') / 255.
+    #x_test = np.pad(x_test, ((0, 0), (6, 6), (6, 6), (0, 0)), 'constant')
     y_train = to_categorical(y_train.astype('float32'))
     y_test = to_categorical(y_test.astype('float32'))
     return (x_train, y_train), (x_test, y_test)
@@ -211,4 +233,4 @@ if __name__ == "__main__":
     else:  # as long as weights are given, will run testing
         if args.weights is None:
             print('No weights are provided. Will test using random initialized weights.')
-        test(model=eval_model, data=(x_test, y_test))
+        test_multi(model=eval_model, data=(x_test, y_test))

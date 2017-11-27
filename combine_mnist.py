@@ -1,23 +1,24 @@
 #!/usr/bin/env python
 
-from capsulenet import load_mnist
 import numpy as np
 
 def draw(canvas, image):
-    x_off = np.random.randint(0, 13)
-    y_off = np.random.randint(0, 13)
+    x_off = np.random.randint(0, 12)
+    y_off = np.random.randint(0, 12)
     w, h, d = image.shape
+    print(image.shape)
     for x in range(w):
         for y in range(h):
             j = image[x][y]
-            if j > 64:
+            if j > 64/255.:
+                #print(x, x_off, y, y_off)
                 canvas.itemset((x + x_off, y + y_off), j)
 
 
 def sample_and_combine(x_pool, y_pool):
     n = x_pool.shape[0]
     first = second = np.random.randint(n)
-    while second == first:
+    while np.array_equal(y_pool[second], y_pool[first]):
         second = np.random.randint(n)
     x1 = x_pool[first]
     y1 = y_pool[first]
@@ -27,13 +28,13 @@ def sample_and_combine(x_pool, y_pool):
     draw(combined, x1)
     draw(combined, x2)
     y1[np.argmax(y2)] = 1
-    return combined, y1
+    return x1, x2, combined.reshape(40, 40, 1), y1
 
 
 def main():
     num_samples = 60000000
     num_test = 10000000
-    (x_train, y_train), (x_test, y_test) = load_mnist()
+    (x_train, y_train), (x_test, y_test) = (1,2),(1,2)
 
     c_x_train = []
     c_y_train = []
